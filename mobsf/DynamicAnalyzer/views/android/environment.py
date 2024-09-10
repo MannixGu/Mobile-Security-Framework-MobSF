@@ -2,6 +2,7 @@
 """Dynamic Analyzer Helpers."""
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import tempfile
@@ -143,14 +144,39 @@ class Environment:
         ], True)
         logger.info('Installing APK - %s', package)
         # Install APK
-        out = self.adb_command([
-            'install',
-            '-r',
-            '-t',
-            '-d',
-            apk_path], False, True)
+        _apk_path = Path(apk_path)
+        directory = _apk_path.parent
+        logger.debug("Scan apk list in: " + directory.as_posix())
+        apk_list = self.find_apk_list(directory)
+        return self.adb_install_command([
+                'install-multiple',
+                '-r'] + apk_list, package)
+        
+    def join_list(self, list, split = ' '):
+        return split.join(str(item) for item in list)
+    
+    def find_apk_list(self, directory):
+        """find all apks in directory"""
+        apks = []
+
+       # 遍历指定目录及其子目录
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                # 检查文件扩展名是否为.apk
+                if file.endswith('.apk'):
+                # and not file.startswith(directory.name):
+                    # 构建完整的文件路径
+                    full_path = os.path.join(root, file)
+                    apks.append(f"{full_path}")
+
+        return apks
+    
+    def adb_install_command(self, cmd_list, package):
+        cmd_str = self.join_list(cmd_list)
+        out = self.adb_command(cmd_list, False, True)
+        logger.debug(cmd_str)
         if not out:
-            return False, 'adb install failed'
+            return False, f'{cmd_str} failed'
         out = out.decode('utf-8', 'ignore')
         # Verify Installation
         return self.is_package_installed(package, out), out
